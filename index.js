@@ -31,11 +31,13 @@ app.use("/uploads", express.static("uploads"));
 
 // Import routes
 const authRoutes = require("./routes/authRoutes");
-const donationRoutes = require("./routes/donationRoutes");
+const donationRoutes = require("./routes/donationsRoutes");
+const uploadRoutes = require("./routes/uploadRoutes");
 
 // Use routes
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/donations", donationRoutes);
+app.use("/api/v1/uploads", uploadRoutes);
 
 // Root route
 app.get("/", (req, res) => {
