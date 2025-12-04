@@ -6,9 +6,14 @@ require("dotenv").config();
 
 /* ---------- Register ---------- */
 const register = async (req, res) => {
-  const { name, email, password } = req.body;
+  const { full_name, email, password } = req.body;
 
   try {
+    // Basic validation
+    if (!full_name || !email || !password) {
+      return resError(res, "Full name, email, and password are required.", 400);
+    }
+
     // Check if user already exists
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
@@ -17,13 +22,13 @@ const register = async (req, res) => {
 
     // Hash password
     const salt = await bcrypt.genSalt(10);
-    const hashed_password = await bcrypt.hash(password, salt);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
     // Create user
     const newUser = await User.create({
-      name,
+      full_name,
       email,
-      hashed_password,
+      password: hashedPassword,
     });
 
     return resSuccess(
@@ -32,7 +37,7 @@ const register = async (req, res) => {
         message: "Registration successful!",
         user: {
           id: newUser.id,
-          name: newUser.name,
+          full_name: newUser.full_name,
           email: newUser.email,
         },
       },
@@ -40,7 +45,7 @@ const register = async (req, res) => {
     );
   } catch (err) {
     console.error("Error in register:", err);
-    return resError(res, err.message);
+    return resError(res, "Failed to register user.", 500);
   }
 };
 
@@ -49,14 +54,19 @@ const login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
+    // Basic validation
+    if (!email || !password) {
+      return resError(res, "Email and password are required.", 400);
+    }
+
     // Find user
     const user = await User.findOne({ where: { email } });
     if (!user) {
       return resError(res, "Invalid email or password.", 400);
     }
 
-    // Compare password
-    const isMatch = await bcrypt.compare(password, user.hashed_password);
+    // Compare password with hashed password in DB
+    const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return resError(res, "Invalid email or password.", 400);
     }
@@ -65,6 +75,7 @@ const login = async (req, res) => {
     const payload = {
       id: user.id,
       email: user.email,
+      full_name: user.full_name,
     };
 
     const token = jwt.sign(payload, process.env.NODE_DONATION_JWT_SECRET, {
@@ -76,13 +87,13 @@ const login = async (req, res) => {
       token,
       user: {
         id: user.id,
-        name: user.name,
+        full_name: user.full_name,
         email: user.email,
       },
     });
   } catch (err) {
     console.error("Error in login:", err);
-    return resError(res, err.message);
+    return resError(res, "Failed to login.", 500);
   }
 };
 
