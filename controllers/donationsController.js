@@ -1,6 +1,14 @@
 const { Category, Item, StockMovement, User, sequelize } = require("../models");
 const { resSuccess, resError } = require("../utils/responseUtil");
 
+const parseKgFromVariant = (variantLabel) => {
+  if (!variantLabel) return 0;
+  const match = String(variantLabel).match(/(\d+)\s*kg/i);
+  if (!match) return 0;
+  const num = parseInt(match[1], 10);
+  return isNaN(num) ? 0 : num;
+};
+
 /* ============================================================
    DASHBOARD SUMMARY
    ============================================================ */
@@ -53,6 +61,16 @@ const getDashboardSummary = async (req, res) => {
     let overallTotalIn = 0;
     let overallTotalOut = 0;
 
+    // Extra stats for "things sent"
+    const sentBreakdown = {
+      rice_kg_sent: 0,
+      dhal_kg_sent: 0,
+      salt_kg_sent: 0,
+      sugar_kg_sent: 0,
+      water_bottles_sent: 0,
+      other_essentials_sent: 0, // pcs of sanitary napkins, biscuits, medicine
+    };
+
     items.forEach((item) => {
       const itemId = item.id;
       const categoryId = item.category ? item.category.id : null;
@@ -95,6 +113,46 @@ const getDashboardSummary = async (req, res) => {
         total_quantity_received: totalIn,
         total_quantity_sent: totalOut,
       });
+
+      // ============================
+      // Special "sent" breakdown
+      // ============================
+      const outQty = totalOut; // total OUT units for this item
+      if (outQty > 0) {
+        const itemName = (item.name || "").toLowerCase();
+        const catName = (categoryName || "").toLowerCase();
+        const variantLabel = item.variant_label || "";
+
+        // Dry rations in KG
+        if (itemName === "rice") {
+          const perBagKg = parseKgFromVariant(variantLabel);
+          sentBreakdown.rice_kg_sent += perBagKg * outQty;
+        } else if (itemName === "dhal" || itemName === "dal") {
+          const perBagKg = parseKgFromVariant(variantLabel);
+          sentBreakdown.dhal_kg_sent += perBagKg * outQty;
+        } else if (itemName === "salt") {
+          const perBagKg = parseKgFromVariant(variantLabel);
+          sentBreakdown.salt_kg_sent += perBagKg * outQty;
+        } else if (itemName === "sugar") {
+          const perBagKg = parseKgFromVariant(variantLabel);
+          sentBreakdown.sugar_kg_sent += perBagKg * outQty;
+        }
+        // Water in bottles
+        else if (catName === "water" || itemName.includes("water")) {
+          sentBreakdown.water_bottles_sent += outQty;
+        }
+        // Other essentials (sanitary napkins, biscuits, medicine)
+        else {
+          const isSanitary = catName.includes("sanitary") || itemName.includes("sanitary");
+          const isBiscuits = itemName.includes("biscuit");
+          const isMedical = catName === "medical";
+
+          if (isSanitary || isBiscuits || isMedical) {
+            // We treat these as "pcs" for summary
+            sentBreakdown.other_essentials_sent += outQty;
+          }
+        }
+      }
     });
 
     // Convert categoryMap to sorted array
@@ -105,9 +163,10 @@ const getDashboardSummary = async (req, res) => {
         total_items: items.length,
         total_quantity_current: overallTotalCurrent, // current stock across all items
         total_quantity_received: overallTotalIn, // total IN movements overall
-        total_quantity_sent: overallTotalOut, // total OUT movements overall
+        total_quantity_sent: overallTotalOut, // total OUT movements overall (raw units)
       },
       categories,
+      sent_breakdown: sentBreakdown, // 👈 NEW: structured "things sent" summary
     });
   } catch (err) {
     console.error("Error in getDashboardSummary:", err);

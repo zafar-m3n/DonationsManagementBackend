@@ -21,6 +21,17 @@ const { resSuccess, resError } = require("../utils/responseUtil");
  * - Item is found or created (name + variant_label + category_id).
  * - Stock movement is created with source = "IMPORT".
  * - items.current_quantity is updated (+= IN, -= OUT).
+ *
+ * IMPORTANT:
+ * - For OUT movements:
+ *    - If unit_type is in [pcs, pieces, packs, pack, boxes, box, cards, card, tablets, tablet, bottles, bottle]
+ *      AND item is NOT tea powder
+ *      AND item is NOT panadol
+ *      AND item is NOT milk powder
+ *      AND category is NOT "Sanitary and Diapers"
+ *      => check available quantity (cannot go below zero).
+ *    - Otherwise (e.g., kg variants, tea powder, panadol, milk powder,
+ *      and anything under "Sanitary and Diapers") => do NOT enforce stock check.
  */
 const importDonationsFromCsv = async (req, res) => {
   if (!req.file) {
@@ -106,6 +117,22 @@ const importDonationsFromCsv = async (req, res) => {
         return item;
       };
 
+      // Discrete unit types where we normally enforce stock check
+      const discreteUnitTypes = [
+        "pcs",
+        "pieces",
+        "packs",
+        "pack",
+        "boxes",
+        "box",
+        "cards",
+        "card",
+        "tablets",
+        "tablet",
+        "bottles",
+        "bottle",
+      ];
+
       for (const rawRow of rows) {
         // Normalize keys: trim + lowercase to avoid issues like "Quantity " / "CATEGORY_NAME"
         const row = {};
@@ -146,8 +173,32 @@ const importDonationsFromCsv = async (req, res) => {
           category_id: category.id,
         });
 
-        // For OUT movements, ensure enough stock
-        if (movementType === "OUT" && item.current_quantity < quantity) {
+        const unitTypeLower = unitType.toLowerCase();
+        const itemNameLower = (item.name || "").toLowerCase();
+        const categoryNameLower = (category.name || "").toLowerCase();
+
+        // Tea powder detection (covers "Tea Powder", "tea powder", etc.)
+        const isTeaPowder = itemNameLower.includes("tea powder") || itemNameLower === "tea";
+        const isPanadol = itemNameLower.includes("panadol");
+        const isMilkPowder = itemNameLower.includes("milk powder");
+        const isSanitaryCategory =
+          categoryNameLower === "sanitary and diapers" || categoryNameLower.includes("sanitary and diapers");
+
+        // Only check stock if:
+        // - unit type is a discrete one AND
+        // - this is NOT tea powder
+        // - this is NOT panadol
+        // - this is NOT milk powder
+        // - category is NOT "Sanitary and Diapers"
+        const shouldCheckStock =
+          discreteUnitTypes.includes(unitTypeLower) &&
+          !isTeaPowder &&
+          !isPanadol &&
+          !isMilkPowder &&
+          !isSanitaryCategory;
+
+        // For OUT movements, optionally ensure enough stock depending on unit_type & item type
+        if (movementType === "OUT" && shouldCheckStock && item.current_quantity < quantity) {
           throw new Error(
             `Not enough stock for item "${item.name}" to remove ${quantity}. Current: ${item.current_quantity}`
           );
