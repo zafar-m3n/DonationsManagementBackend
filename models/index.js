@@ -1,17 +1,24 @@
 // models/index.js
-const User = require("./User");
-const Category = require("./Category");
-const Item = require("./Item");
-const Donation = require("./Donation");
+const { DataTypes } = require("sequelize");
+const { sequelize } = require("../config/database");
 
-/**
- * Associations
- * ------------
- * Category 1 - M Item
- * Item     1 - M Donation
- * User     1 - M Donation (created_by)
- */
+// Import model definers
+const UserModel = require("./User");
+const CategoryModel = require("./Category");
+const ItemModel = require("./Item");
+const StockMovementModel = require("./StockMovement");
 
+// Initialize models
+const User = UserModel(sequelize, DataTypes);
+const Category = CategoryModel(sequelize, DataTypes);
+const Item = ItemModel(sequelize, DataTypes);
+const StockMovement = StockMovementModel(sequelize, DataTypes);
+
+// =========================
+// Define Associations
+// =========================
+
+// Category 1 - M Item
 Category.hasMany(Item, {
   foreignKey: "category_id",
   as: "items",
@@ -22,29 +29,33 @@ Item.belongsTo(Category, {
   as: "category",
 });
 
-Item.hasMany(Donation, {
+// Item 1 - M StockMovement
+Item.hasMany(StockMovement, {
   foreignKey: "item_id",
-  as: "donations",
+  as: "movements",
 });
 
-Donation.belongsTo(Item, {
+StockMovement.belongsTo(Item, {
   foreignKey: "item_id",
   as: "item",
 });
 
-User.hasMany(Donation, {
+// User 1 - M StockMovement (created_by)
+User.hasMany(StockMovement, {
   foreignKey: "created_by",
-  as: "donations",
+  as: "stockMovements",
 });
 
-Donation.belongsTo(User, {
+StockMovement.belongsTo(User, {
   foreignKey: "created_by",
   as: "createdBy",
 });
 
+// Export models + sequelize
 module.exports = {
+  sequelize,
   User,
   Category,
   Item,
-  Donation,
+  StockMovement,
 };
